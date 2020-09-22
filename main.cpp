@@ -8,6 +8,7 @@
 #include <iterator>
 #include <set>
 #include <cstdio>
+#include <fstream>
 #include <iostream>
 #include "MultiDeviceCapturer.h"
 #include "transformation.h"
@@ -83,6 +84,8 @@ static void help()
         "\t t   -- Toggle printing timings\n"
         "\t w   -- Write learned templates to disk\n"
         "\t [ ] -- Adjust matching threshold: '[' down,  ']' up\n"
+        "\t c   -- capture\n"
+        "\t r   -- record till pressed again\n"
         "\t q   -- Quit\n\n");
 }
 
@@ -169,17 +172,18 @@ int main(int argc, char* argv[])
     help();
     cv::namedWindow("color");
     cv::namedWindow("normals");
+    cv::namedWindow("masked");
     Mouse::start("color");
 
     // Initialize LINEMOD data structures
     cv::Ptr<cv::linemod::Detector> detector;
     std::string filename;
-   // if (argc == 1)
-    //{
+    if (argc == 1)
+    {
         filename = "linemod_templates.yml";
         detector = cv::linemod::getDefaultLINEMOD();
-     //}
-    /*
+     }
+
     else
     {
         detector = readLinemod(argv[1]);
@@ -193,7 +197,7 @@ int main(int argc, char* argv[])
             printf("Class ids:\n");
             std::copy(ids.begin(), ids.end(), std::ostream_iterator<std::string>(std::cout, "\n"));
         }
-    }*/
+    }
     int num_modalities = (int)detector->getModalities().size();
     
     //**** Azure Kinect sensor
@@ -203,6 +207,9 @@ int main(int argc, char* argv[])
     MultiDeviceCapturer capturer(device_indices, color_exposure_usec, powerline_freq);
     // Create configurations for devices
     k4a_device_configuration_t main_config = get_master_config();
+    main_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED;
+    main_config.camera_fps = K4A_FRAMES_PER_SECOND_30;
+    main_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
     main_config.wired_sync_mode = K4A_WIRED_SYNC_MODE_STANDALONE;// no need to have a master cable if it's standalone
     k4a_device_configuration_t secondary_config = get_subordinate_config(); // not used - currently standalone mode
     // Construct all the things that we'll need whether or not we are running with 1 or 2 cameras
@@ -211,32 +218,53 @@ int main(int argc, char* argv[])
     // hardware setup and should not change once you have a rigid setup, so only call it once or it will run very
     // slowly.
     k4a::transformation main_depth_to_main_color(main_calibration);
-    capturer.start_devices(main_config, secondary_config);                                                 
+    capturer.start_devices(main_config, secondary_config);
     double focal_length = main_calibration.depth_camera_calibration.intrinsics.parameters.param.fy;
+
 
     // Main loop
     cv::Mat color, depth;
+    int fileNo(0);
+    bool record(false), capture(false);
     for (;;)
     {
         vector<k4a::capture> captures;
-        // secondary_config isn't actually used here because there's no secondary device but the function needs it
         captures = capturer.get_synchronized_captures(secondary_config, true);
         k4a::image main_color_image = captures[0].get_color_image();
         k4a::image main_depth_image = captures[0].get_depth_image();
+
         // let's green screen out things that are far away.
-                // first: let's get the main depth image into the color camera space
+        // first: let's get the main depth image into the color camera space
         k4a::image main_depth_in_main_color = create_depth_image_like(main_color_image);
         main_depth_to_main_color.depth_image_to_color_camera(main_depth_image, &main_depth_in_main_color);
-        //cv::Mat cv_main_depth_in_main_color = depth_to_opencv(main_depth_in_main_color);
         depth = depth_to_opencv(main_depth_in_main_color);
         color = color_to_opencv(main_color_image);
+
+        //cv::imshow("masked", depth);
+        /*color2depth - dose not work for linemod*/
+        //k4a_image_t transformed = color_to_depth(transformation,main_depth_image.handle(),main_color_image.handle());
         //depth = depth_to_opencv(main_depth_image);
+        //color = color_to_opencv(transformed);
 
         std::vector<cv::Mat> sources;
         sources.push_back(color);
         sources.push_back(depth);
-       // cv::imshow("test", depth);
-        
+        if(record || capture){
+            // write source to disk
+            cv::FileStorage fs_d("depth"+to_string(fileNo)+".xml", cv::FileStorage::WRITE);
+            fs_d<<"depth" + to_string(fileNo)<<depth; fs_d.release();
+            cv::FileStorage fs_c("color"+to_string(fileNo)+".xml", cv::FileStorage::WRITE);
+            fs_c<<"color" + to_string(fileNo)<<color;fs_c.release();
+
+ //           cv::FileStorage fs_r("color"+to_string(fileNo)+".xml", cv::FileStorage::READ);
+ //           cv::Mat matImage;
+ //           fs_r["color" + to_string(fileNo)] >> matImage;
+ //           fs_r.release();
+ //           cv::imshow("masked", matImage);
+            cout<<"Wrote sources to #"<<fileNo++<<"files"<<endl;
+            capture = false;
+        }
+
         cv::Mat display = color.clone();
         if (!learn_online)
         {
@@ -322,8 +350,23 @@ int main(int argc, char* argv[])
                         cv::Point(m.x, m.y), color.size(),
                         color_mask, display);
                     subtractPlane(depth, depth_mask, chain, focal_length);
-
                     cv::imshow("mask", depth_mask);
+    /*                int height = sources[0].rows;
+                    int width = sources[0].cols;
+                    for(int i=0;i<height;i++){
+                        uchar* ptr_color = sources[0].ptr<uchar>(i);
+                        uchar* ptr_depth = sources[1].ptr<uchar>(i);
+                        uchar* ptr_mask = depth_mask.ptr<uchar>(i);
+                        for(int j=0;j<width;j++){
+                            if(ptr_mask[j]) continue;
+                            ptr_color[j*3+0] = 0;
+                            ptr_color[j*3+1] = 0;
+                            ptr_color[j*3+2] = 0;
+                            ptr_depth[j] = 0;
+                        }
+                    }
+                    cv::imshow("masked", sources[1]);*/
+
                     // If pretty sure (but not TOO sure), add new template
                     if (learning_lower_bound < m.similarity && m.similarity < learning_upper_bound)
                     {
@@ -392,6 +435,12 @@ int main(int argc, char* argv[])
             // write model to disk
             writeLinemod(detector, filename);
             printf("Wrote detector and templates to %s\n", filename.c_str());
+            break;
+        case 'r':
+            record = !record;
+            break;
+        case 'c':
+            capture = true;
             break;
         default:
             ;
