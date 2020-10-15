@@ -33,6 +33,7 @@ class MultiDeviceCapturer
 {
 public:
     // Set up all the devices. Note that the index order isn't necessarily preserved, because we might swap with master
+    MultiDeviceCapturer(){}
     MultiDeviceCapturer(const vector<uint32_t>& device_indices, int32_t color_exposure_usec, int32_t powerline_freq)
     {
         bool master_found = false;

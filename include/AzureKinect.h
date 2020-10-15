@@ -37,7 +37,7 @@ static k4a_device_configuration_t get_default_config()
     camera_config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
     //    camera_config.depth_mode = K4A_DEPTH_MODE_WFOV_UNBINNED; // No need for depth during calibration
     camera_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED; // No need for depth during calibration
-    camera_config.camera_fps = K4A_FRAMES_PER_SECOND_15;     // Don't use all USB bandwidth
+    camera_config.camera_fps = K4A_FRAMES_PER_SECOND_5;     // Don't use all USB bandwidth
     camera_config.subordinate_delay_off_master_usec = 0;     // Must be zero for master
     camera_config.synchronized_images_only = true;
     return camera_config;

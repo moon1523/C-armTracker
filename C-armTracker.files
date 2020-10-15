@@ -2,5 +2,6 @@ CMakeLists.txt
 README.md
 include/AzureKinect.h
 include/MultiDeviceCapturer.h
+include/labeldata.hh
 include/transformation.h
 main.cpp

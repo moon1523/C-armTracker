@@ -1,1 +1,3 @@
 include
+/usr/include/vtk-7.1
+include/include
