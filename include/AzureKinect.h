@@ -32,12 +32,11 @@ constexpr uint32_t MIN_TIME_BETWEEN_DEPTH_CAMERA_PICTURES_USEC = 160;
 static k4a_device_configuration_t get_default_config()
 {
     k4a_device_configuration_t camera_config = K4A_DEVICE_CONFIG_INIT_DISABLE_ALL;
-//    camera_config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
     camera_config.color_format = K4A_IMAGE_FORMAT_COLOR_BGRA32;
-    camera_config.color_resolution = K4A_COLOR_RESOLUTION_1080P;
+    camera_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
     //    camera_config.depth_mode = K4A_DEPTH_MODE_WFOV_UNBINNED; // No need for depth during calibration
     camera_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED; // No need for depth during calibration
-    camera_config.camera_fps = K4A_FRAMES_PER_SECOND_5;     // Don't use all USB bandwidth
+    camera_config.camera_fps = K4A_FRAMES_PER_SECOND_15;     // Don't use all USB bandwidth
     camera_config.subordinate_delay_off_master_usec = 0;     // Must be zero for master
     camera_config.synchronized_images_only = true;
     return camera_config;
@@ -54,7 +53,7 @@ static k4a_device_configuration_t get_master_config()
     // depth image (MIN_TIME_BETWEEN_DEPTH_CAMERA_PICTURES_USEC / 2) after the color image. This gives us two depth
     // images centered around the color image as closely as possible.
     camera_config.depth_delay_off_color_usec = -static_cast<int32_t>(MIN_TIME_BETWEEN_DEPTH_CAMERA_PICTURES_USEC / 2);
-    camera_config.synchronized_images_only = true;
+   // camera_config.synchronized_images_only = true;
     return camera_config;
 }
 // Subordinate customizable settings

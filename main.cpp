@@ -284,9 +284,9 @@ int main(int argc, char* argv[])
         capturer = MultiDeviceCapturer(device_indices, color_exposure_usec, powerline_freq);
         // Create configurations for devices
         main_config = get_master_config();
-        main_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED;
-        main_config.camera_fps = K4A_FRAMES_PER_SECOND_15;
-        main_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
+//        main_config.depth_mode = K4A_DEPTH_MODE_NFOV_UNBINNED;
+//        main_config.camera_fps = K4A_FRAMES_PER_SECOND_15;
+//        main_config.color_resolution = K4A_COLOR_RESOLUTION_720P;
         main_config.wired_sync_mode = K4A_WIRED_SYNC_MODE_STANDALONE;// no need to have a master cable if it's standalone
         secondary_config = get_subordinate_config(); // not used - currently standalone mode
         // Construct all the things that we'll need whether or not we are running with 1 or 2 cameras
@@ -330,7 +330,7 @@ int main(int argc, char* argv[])
         if(fromRecorded){
             if(recordID==depthVec.size()) break;
             depth = depthVec[recordID];
-            color = depthVec[recordID++];
+            color = colorVec[recordID++];
         }
         else{
             vector<k4a::capture> captures;
@@ -366,7 +366,7 @@ int main(int argc, char* argv[])
         cv::Mat display = color.clone();
 
         std::vector<cv::Mat> sources;
-        depth = (depth-label.GetMinDist())*label.GetDepthFactor();
+        //depth = (depth-label.GetMinDist())*label.GetDepthFactor();
         sources.push_back(color);
         sources.push_back(depth);
 
@@ -377,8 +377,6 @@ int main(int argc, char* argv[])
         match_timer.start();
         detector->match(sources, (float)matching_threshold, matches, class_ids, quantized_images);
         match_timer.stop();
-        cv::imshow("color", display);
-                cv::imshow("normals", quantized_images[1]);
 
         int classes_visited = 0;
         std::set<std::string> visited;
@@ -422,8 +420,8 @@ int main(int argc, char* argv[])
             if (show_match_result || show_timings)
                 printf("------------------------------------------------------------\n");
         }
-//        cv::imshow("color", display);
-//        cv::imshow("normals", quantized_images[1]);
+        cv::imshow("color", display);
+        cv::imshow("normals", quantized_images[1]);
 
         char key = (char)cv::waitKey(10);
         if (key == 'q')
