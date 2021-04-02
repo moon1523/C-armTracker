@@ -40,11 +40,6 @@ using namespace std;
 
 int frameIdx(0);
 bool printPLY(false);
-int count(0);
-
-ofstream res("linemod_res.txt");
-
-
 
 class WPoly : public viz::Widget3D
 {
@@ -257,15 +252,18 @@ void PrintUsage(){
 int main(int argc, char* argv[])
 {
     // Arguments
-    bool tracking = true;
-    bool fromRecorded = false;
-    bool xyTable = false;
+    bool tracking(true);
+    bool fromRecorded(false);
+    bool xyTable(false);
+    bool printPCD(false);
+
     string path;
     string recordFileName("record");
     labeldata label;
     if(argc==1) tracking = false;
-    else if(argc==2 && string(argv[2])=="-xy") { xyTable = true; }
-    else if(argc==3 && string(argv[1])=="-r" ) { tracking = false; recordFileName = string(argv[2]); }
+    else if(argc==2 && string(argv[2])=="-xy")  { xyTable  = true; }
+    else if(argc==2 && string(argv[2])=="-pcd") { printPCD = true; }
+    else if(argc==3 && string(argv[1])=="-r" )  { tracking = false; recordFileName = string(argv[2]); }
     else if(argc>1){
         path = argv[1];
         label = labeldata(path+"/labels.txt");
@@ -274,7 +272,6 @@ int main(int argc, char* argv[])
             recordFileName = string(argv[2]);
         }
     }
-
 
     // Read C-arm model
     viz::Viz3d myWindow("PLY viewer");
@@ -295,6 +292,7 @@ int main(int argc, char* argv[])
     // Various settings and flags
     bool show_match_result = true;
     bool show_timings = false;
+    bool show_aiming = true;
     int num_classes = 0;
     int matching_threshold = 70;
 
@@ -349,9 +347,6 @@ int main(int argc, char* argv[])
         // slowly.
         main_depth_to_main_color = k4a::transformation(main_calibration);
         capturer.start_devices(main_config, secondary_config);
-
-        cout << "calibration" << endl;
-        cout << main_calibration.color_resolution << endl;
     }
 
 
@@ -408,302 +403,333 @@ int main(int argc, char* argv[])
 
 
     // Print PCD =======================================================
-    cout << "Print Point Cloud Data" << flush;
-    float xx, yy; 
-    fs_d_pcd.open(path+"/"+recordFileName+"_d.xml", cv::FileStorage::READ);
-    for (int i=0; i<depthVec.size(); i++) {
-        string name = "frame" + to_string(i);
-        cv::Mat depth2;
-        fs_d_pcd[name] >> depth2;
-        depthPCDVec.push_back(depth2);
+    if (printPCD) {
+        cout << "Print Point Cloud Data" << flush;
+        float xx, yy; 
+        fs_d_pcd.open(path+"/"+recordFileName+"_d.xml", cv::FileStorage::READ);
+        for (int i=0; i<depthVec.size(); i++) {
+            string name = "frame" + to_string(i);
+            cv::Mat depth2;
+            fs_d_pcd[name] >> depth2;
+            depthPCDVec.push_back(depth2);
 
-        
-        int idx(-1);
-        for (int y=0; y<height_d; y++) {
-            for (int x=0; x<width_d; x++) {
-                idx++;
-                float z = depthPCDVec[i].at<ushort>(y,x);
-                // ifs >> xxx >> yyy;
-                // if (xxx == "nan" && yyy == "nan") { xy_table.push_back({0,0}); continue; }
-                // xy_table.push_back({stof(xxx),stof(yyy)});
-                    if (z==0) continue;
-                xx = xy_table[idx].first*z; yy = xy_table[idx].second*z;
-                pcd_data.push_back(make_tuple(xx,yy,z));
+            
+            int idx(-1);
+            for (int y=0; y<height_d; y++) {
+                for (int x=0; x<width_d; x++) {
+                    idx++;
+                    float z = depthPCDVec[i].at<ushort>(y,x);
+                    // ifs >> xxx >> yyy;
+                    // if (xxx == "nan" && yyy == "nan") { xy_table.push_back({0,0}); continue; }
+                    // xy_table.push_back({stof(xxx),stof(yyy)});
+                        if (z==0) continue;
+                    xx = xy_table[idx].first*z; yy = xy_table[idx].second*z;
+                    pcd_data.push_back(make_tuple(xx,yy,z));
+                }
             }
-    	}
 
-        ofstream pcd("pcd_set/frame" + to_string(i) +"_pcd.ply");
-        pcd << "ply" << std::endl;
-        pcd << "format ascii 1.0" << std::endl;
-        pcd << "element vertex " << pcd_data.size() << std::endl;
-        pcd << "property float x" << std::endl;
-        pcd << "property float y" << std::endl;
-        pcd << "property float z" << std::endl;
-        pcd << "end_header" << std::endl;
+            ofstream pcd("pcd_set/frame" + to_string(i) +"_pcd.ply");
+            pcd << "ply" << std::endl;
+            pcd << "format ascii 1.0" << std::endl;
+            pcd << "element vertex " << pcd_data.size() << std::endl;
+            pcd << "property float x" << std::endl;
+            pcd << "property float y" << std::endl;
+            pcd << "property float z" << std::endl;
+            pcd << "end_header" << std::endl;
 
-        for (auto itr:pcd_data) {
-            pcd << get<0>(itr) << " " << get<1>(itr) << " " << get<2>(itr) << endl;
+            for (auto itr:pcd_data) {
+                pcd << get<0>(itr) << " " << get<1>(itr) << " " << get<2>(itr) << endl;
+            }
+            if (i==depthVec.size()-1) continue;
+            pcd_data.clear();
         }
-        if (i==depthVec.size()-1) continue;
-        pcd_data.clear();
+        cout << "...done" << endl;
     }
-    cout << "...done" << endl;
+    
     // ======================================================= PCD
 
-//     ofstream ofs1("linemod_xyz+depth.txt");
-//     ofstream ofs2("linemod_sim+ID.txt");
-//     ofstream ofs3("linemod_3D.txt");
-//     ofstream ofs4("linemod_2D.txt");
-//     ofstream ofs_xyz("source_xyz.txt");
+    ofstream ofs1("linemod_xyz+depth.txt");
+    ofstream ofs2("linemod_sim+ID.txt");
+    ofstream ofs3("linemod_3D.txt");
+    ofstream ofs4("linemod_2D.txt");
+    ofstream ofs_xyz("source_xyz.txt");
 
-//     bool endXML(false);
-//     printPLY = true;
+    bool endXML(false);
+    printPLY = true;
 
-//     double source[3] = {0,0,-810};
-//     double origin[3] = {0,0,0};
-//     vtkSmartPointer<vtkTransform> transform  = vtkSmartPointer<vtkTransform>::New();
+    double source[3] = {0,0,-810};
+    double origin[3] = {0,0,0};
+    vtkSmartPointer<vtkTransform> transform  = vtkSmartPointer<vtkTransform>::New();
 
-//     // Main Loop
-//     for (;;)
-//     {
+    // Main Loop
+    for (;;)
+    {
 //         if(fromRecorded){
 //             if(recordID==depthVec.size()) break;
 //             depth = depthVec[recordID];
 //             color = colorVec[recordID++];
 //         }
 //         else{
-//             vector<k4a::capture> captures;
-//             captures = capturer.get_synchronized_captures(secondary_config, true);
-//             k4a::image main_color_image = captures[0].get_color_image();
-//             k4a::image main_depth_image = captures[0].get_depth_image();
+            vector<k4a::capture> captures;
+            captures = capturer.get_synchronized_captures(secondary_config, true);
+            k4a::image main_color_image = captures[0].get_color_image();
+            k4a::image main_depth_image = captures[0].get_depth_image();
 
-//             // let's green screen out things that are far away.
-//             // first: let's get the main depth image into the color camera space
-//             k4a::image main_depth_in_main_color = create_depth_image_like(main_color_image);
-//             main_depth_to_main_color.depth_image_to_color_camera(main_depth_image, &main_depth_in_main_color);
-//             depth = depth_to_opencv(main_depth_in_main_color);
-//             color = color_to_opencv(main_color_image);
-// //            cv::imshow("masked", depth);
-//             /*color2depth - dose not work for linemod*/
-// //            k4a_image_t transformed = color_to_depth(transformation,main_depth_image.handle(),main_color_image.handle());
-// //            depth = depth_to_opencv(main_depth_image);
-// //            color = color_to_opencv(transformed);
-
-//             if(recording || capt){
-//                 if(!fs_d.isOpened()){
-//                     fs_c.open(recordFileName+"_c.xml", cv::FileStorage::WRITE);
-//                     fs_d.open(recordFileName+"_d.xml", cv::FileStorage::WRITE);
-//                 }
-//                 fs_d << "frame"+to_string(recordID)<< depth;
-//                 fs_c << "frame"+to_string(recordID)<< color;
-
-//                 cout<<"Recorded frame "<<recordID++<< endl;
-//                 if(capt==true) cout<<endl;
-//                 capt = false;
-//             }
+            // let's green screen out things that are far away.
+            // first: let's get the main depth image into the color camera space
+            k4a::image main_depth_in_main_color = create_depth_image_like(main_color_image);
+            main_depth_to_main_color.depth_image_to_color_camera(main_depth_image, &main_depth_in_main_color);
+            depth = depth_to_opencv(main_depth_in_main_color);
+            color = color_to_opencv(main_color_image);
+//            cv::imshow("masked", depth);
+            /*color2depth - dose not work for linemod*/
+//            k4a_image_t transformed = color_to_depth(transformation,main_depth_image.handle(),main_color_image.handle());
+//            depth = depth_to_opencv(main_depth_image);
+//            color = color_to_opencv(transformed);
 //         }
 
-//         if (endXML) {
-//         	fs_d.release();
-// 			fs_c.release();
-//         }
+            if(recording || capt){
+                if(!fs_d.isOpened()){
+                    fs_c.open(recordFileName+"_c.xml", cv::FileStorage::WRITE);
+                    fs_d.open(recordFileName+"_d.xml", cv::FileStorage::WRITE);
+                }
+                fs_d << "frame"+to_string(recordID)<< depth;
+                fs_c << "frame"+to_string(recordID)<< color;
 
+                cout<<"Recorded frame "<<recordID++<< endl;
+                if(capt==true) cout<<endl;
+                capt = false;
+            }
+        // }
 
+        if (endXML) {
+        	fs_d.release();
+			fs_c.release();
+        }
 
-//         std::vector<cv::Mat> sources;
-//         cv::Mat depthOrigin = depth.clone();
-//         depth = (depth-label.GetMinDist())*label.GetDepthFactor();
-//         sources.push_back(color);
-//         sources.push_back(depth);
+        std::vector<cv::Mat> sources;
+        cv::Mat depthOrigin = depth.clone();
+        depth = (depth-label.GetMinDist())*label.GetDepthFactor();
+        sources.push_back(color);
+        sources.push_back(depth);
 
-//         cv::Mat display = color.clone();
+        cv::Mat display = color.clone();
 
-//         // Perform matching
-//         std::vector<cv::linemod::Match> matches;
-//         std::vector<cv::String> class_ids;
-//         std::vector<cv::Mat> quantized_images;
-//         match_timer.start();
-//         detector->match(sources, (float)matching_threshold, matches, class_ids, quantized_images);
-//         match_timer.stop();
+        // Perform matching
+        std::vector<cv::linemod::Match> matches;
+        std::vector<cv::String> class_ids;
+        std::vector<cv::Mat> quantized_images;
+        match_timer.start();
+        detector->match(sources, (float)matching_threshold, matches, class_ids, quantized_images);
+        match_timer.stop();
 
-//         int classes_visited = 0;
-//         std::set<std::string> visited;
-//         if(tracking){
-//             int maxID; double maxSim(-1); int match_count(0);
-//             for (int i = 0; (i < (int)matches.size()) && (classes_visited < num_classes); ++i)
-//             {
-//                 cv::linemod::Match m = matches[i];
-//                 if (visited.insert(m.class_id).second)
-//                 {
-//                     ++classes_visited;
+        int classes_visited = 0;
+        std::set<std::string> visited;
+        if(tracking){
+            int maxID; double maxSim(-1); int match_count(0);
+            for (int i = 0; (i < (int)matches.size()) && (classes_visited < num_classes); ++i)
+            {
+                cv::linemod::Match m = matches[i];
+                if (visited.insert(m.class_id).second)
+                {
+                    ++classes_visited;
 
-//                     if (show_match_result)
-//                     {
-//                         printf("Similarity: %5.1f%%; x: %3d; y: %3d; class: %s; template: %3d\n",
-//                                m.similarity, m.x, m.y, m.class_id.c_str(), m.template_id);
-//                                match_count++;
-//                     }
-//                     if(m.similarity>maxSim){
-//                         maxSim = m.similarity;
-//                         maxID = i;
-//                     }
+                    if (show_match_result)
+                    {
+                        printf("Similarity: %5.1f%%; x: %3d; y: %3d; class: %s; template: %3d\n",
+                               m.similarity, m.x, m.y, m.class_id.c_str(), m.template_id);
+                               match_count++;
+                    }
+                    if(m.similarity>maxSim){
+                        maxSim = m.similarity;
+                        maxID = i;
+                    }
 
-//                 }
-//             }
+                }
+            }
 
             
-//             if(maxSim>0){
-//                 cv::linemod::Match m = matches[maxID];
+            if(maxSim>0){
+                cv::linemod::Match m = matches[maxID];
 
-//                 // Draw matching template
-//                 const std::vector<cv::linemod::Template>& templates = detector->getTemplates(m.class_id, m.template_id);
-//                 drawResponse(templates, num_modalities, display, cv::Point(m.x, m.y), detector->getT(0), depthOrigin, xy_table);
-
-
-//                 // Debugging zone =================================================================================
-//                 // ofstream ofs1("linemod_xyz+depth.txt");
-//                 // ofstream ofs2("linemod_sim+ID.txt");
-//                 // ofstream ofs3("linemod_3D.txt");
-//                 // ofstream ofs4("linemod_2D.txt");
-//                 // ofstream ofs_xyz("source_xyz.txt");
-
-//                 ofs1 << m.x << " " << m.y << " " << depth.at<ushort>(m.y,m.x) << " " << depth.cols*m.y + m.x << "|"
-//                 		<< xy_table[depth.cols*m.y + m.x].first   << " "
-// 						<< xy_table[depth.cols*m.y + m.x].second  << "|"
-// 						<< xy_table[depth.cols*m.y + m.x].first  * depth.at<ushort>(m.y,m.x) << " "
-// 						<< xy_table[depth.cols*m.y + m.x].second * depth.at<ushort>(m.y,m.x) << endl;
-//                 ofs2 << m.similarity << " " << m.class_id.c_str() << " " << m.template_id << endl;
-
-//                 int iC = m.x + label.GetPosition(stoi(m.class_id), m.template_id).first;
-//                 int jC = m.y + label.GetPosition(stoi(m.class_id), m.template_id).second;
-//                 double kC = label.GetDistance(stoi(m.class_id), m.template_id);
-
-//                 double posX = xy_table[depth.cols*jC + iC].first  * kC;
-//                 double posY = xy_table[depth.cols*jC + iC].second * kC;
-//                 double posZ = kC;
+                // Draw matching template
+                const std::vector<cv::linemod::Template>& templates = detector->getTemplates(m.class_id, m.template_id);
+                drawResponse(templates, num_modalities, display, cv::Point(m.x, m.y), detector->getT(0), depthOrigin, xy_table);
 
 
-//                 ofs3 << xy_table[depth.cols*m.y + m.x].first * kC<< " " 
-//                      << xy_table[depth.cols*m.y + m.x].second * kC<< " " 
-//                      << kC << "\t" << posX << " "	<< posY << " "	<< posZ << endl;
+                // Debugging zone =================================================================================
+                // Naming
+                // ofstream ofs1("linemod_xyz+depth.txt");
+                // ofstream ofs2("linemod_sim+ID.txt");
+                // ofstream ofs3("linemod_3D.txt");
+                // ofstream ofs4("linemod_2D.txt");
+                // ofstream ofs_xyz("source_xyz.txt");
 
-//                 ofs4 << m.x << "\t" << m.y << "\t" << iC << "\t" << jC << endl;
-//                 // Debugging zone =================================================================================
+                ofs1 << m.x << " " << m.y << " " << depth.at<ushort>(m.y,m.x) << " " << depth.cols*m.y + m.x << "|"
+                		<< xy_table[depth.cols*m.y + m.x].first   << " "
+						<< xy_table[depth.cols*m.y + m.x].second  << "|"
+						<< xy_table[depth.cols*m.y + m.x].first  * depth.at<ushort>(m.y,m.x) << " "
+						<< xy_table[depth.cols*m.y + m.x].second * depth.at<ushort>(m.y,m.x) << endl;
+                ofs2 << m.similarity << " " << m.class_id.c_str() << " " << m.template_id << endl;
 
-//                 double source_rot[3], origin_rot[3];
-//                 transform->Identity();
-//                 transform->SetMatrix(label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id));
-//                 // transform->RotateX(180);
-//                 transform->TransformPoint(origin, origin_rot);
-//                 transform->TransformPoint(source, source_rot);
+                int iC = m.x + label.GetPosition(stoi(m.class_id), m.template_id).first;
+                int jC = m.y + label.GetPosition(stoi(m.class_id), m.template_id).second;
+                double kC = label.GetDistance(stoi(m.class_id), m.template_id);
+
+                double posX = xy_table[depth.cols*jC + iC].first  * kC;
+                double posY = xy_table[depth.cols*jC + iC].second * kC;
+                double posZ = kC;
+
+
+                ofs3 << xy_table[depth.cols*m.y + m.x].first * kC<< " " 
+                     << xy_table[depth.cols*m.y + m.x].second * kC<< " " 
+                     << kC << "\t" << posX << " "	<< posY << " "	<< posZ << endl;
+
+                ofs4 << m.x << "\t" << m.y << "\t" << iC << "\t" << jC << endl;
+                // Debugging zone =================================================================================
+
+                double source_rot[3], origin_rot[3];
+                transform->Identity();
+                transform->SetMatrix(label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id));
+                // transform->RotateX(180);
+                transform->TransformPoint(origin, origin_rot);
+                transform->TransformPoint(source, source_rot);
                 
-//                 origin_rot[0] += posX; origin_rot[1] += posY;
-//                 source_rot[0] += posX; source_rot[1] += posY;
+                origin_rot[0] += posX; origin_rot[1] += posY;
+                source_rot[0] += posX; source_rot[1] += posY;
 
-//                 // Print Results
-//                 ofs_xyz << "Frame " << recordID-1 << endl;
-//                 ofs_xyz << "Index " << m.class_id << " " << m.template_id << " " << endl;
-//                 ofs_xyz << "AffineT" << endl;
-//                 ofs_xyz << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[0] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[1] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[2] << " "
-//                         << posX << endl;
-//                 ofs_xyz << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[4] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[5] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[6] << " "
-//                         << posY << endl;
-//                 ofs_xyz << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[8] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[9] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[10] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[11] << endl;
-//                 ofs_xyz << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[12] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[13] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[14] << " "
-//                         << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[15] << endl;                                        
+                // Print Results
+                ofs_xyz << "Frame " << recordID-1 << endl;
+                ofs_xyz << "Index " << m.class_id << " " << m.template_id << " " << endl;
+                ofs_xyz << "AffineT" << endl;
+                ofs_xyz << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[0] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[1] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[2] << " "
+                        << posX << endl;
+                ofs_xyz << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[4] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[5] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[6] << " "
+                        << posY << endl;
+                ofs_xyz << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[8] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[9] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[10] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[11] << endl;
+                ofs_xyz << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[12] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[13] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[14] << " "
+                        << label.GetAffineTransformMatrix(stoi(m.class_id), m.template_id)[15] << endl;                                        
                 
-//                 ofs_xyz << "Isocenter " << origin_rot[0] << " " << origin_rot[1] << " " << origin_rot[2] << endl;
-//                 ofs_xyz << "Source    " << source_rot[0] << " " << source_rot[1] << " " << source_rot[2] << endl;
+                ofs_xyz << "Isocenter " << origin_rot[0] << " " << origin_rot[1] << " " << origin_rot[2] << endl;
+                ofs_xyz << "Source    " << source_rot[0] << " " << source_rot[1] << " " << source_rot[2] << endl;
 
-//                 ofs_xyz << "Power     " << 1 << endl;
-//                 ofs_xyz << "Time      " << 0 << endl;
-//                 ofs_xyz << "DAP_rate  " << 0.0010 << " Gy-cm2/s" << endl;
-//                 ofs_xyz << "T_Voltage " << 62     << " kV"       << endl;
-//                 ofs_xyz << "T_Current " << 1.2    << " mA"       << endl << endl;
+                ofs_xyz << "Power     " << 1 << endl;
+                ofs_xyz << "Time      " << 0 << endl;
+                ofs_xyz << "DAP_rate  " << 0.0010 << " Gy-cm2/s" << endl;
+                ofs_xyz << "T_Voltage " << 62     << " kV"       << endl;
+                ofs_xyz << "T_Current " << 1.2    << " mA"       << endl << endl;
                                
 
-//                 poly.Transform(atoi(m.class_id.c_str()), m.template_id, origin_rot);
-//                 myWindow.spinOnce(1, true);
-//             } // max Sim
+                poly.Transform(atoi(m.class_id.c_str()), m.template_id, origin_rot);
+                myWindow.spinOnce(1, true);
+            } // max Sim
 
-//             if (show_match_result && matches.empty())
-//                 printf("No matches found...\n");
-//             if (show_timings)
-//             {
-//                 printf("Matching: %.2fs\n", match_timer.time());
-//             }
-//             if (show_match_result || show_timings)
+            if (show_match_result && matches.empty())
+                printf("No matches found...\n");
+            if (show_timings)
+            {
+                printf("Matching: %.2fs\n", match_timer.time());
+            }
+            if (show_match_result || show_timings)
 
-//                 cout << "Match count: " << match_count << endl;
-//                 printf("Matching: %.2fs\n", match_timer.time());
-//                 printf("------------------------------------------------------------\n");
-//         } // tracking
-//         cv::imshow("color", display);
-//         cv::imshow("normals", quantized_images[1]);
+                cout << "Match count: " << match_count << endl;
+                printf("Matching: %.2fs\n", match_timer.time());
+                printf("------------------------------------------------------------\n");
+        } // tracking
 
-//         cv::imwrite("./capture/color/color" + to_string(recordID) +".png", display);
-//         cv::imwrite("./capture/normal/normal" + to_string(recordID) +".png", quantized_images[1]);
+        if (show_aiming) {
+            // cout << display.cols << endl; // 1280
+            // cout << display.rows << endl; // 720
+            int aimSize(10);
+            line(display, Point(640,360-aimSize), Point(640,360+aimSize), Scalar(255,255,0), 2, 4, 0);
+            line(display, Point(640-aimSize,360), Point(640+aimSize,360), Scalar(255,255,0), 2, 4, 0);
+            line(quantized_images[1], Point(640,360-aimSize), Point(640,360+aimSize), Scalar(255,255,0), 2, 4, 0);
+            line(quantized_images[1], Point(640-aimSize,360), Point(640+aimSize,360), Scalar(255,255,0), 2, 4, 0);
+
+            int aimPP(0);
+            for (int y=0;y<aimSize*2;y++) {
+                for (int x=0;x<aimSize*2;x++) {
+                    aimPP += depth.at<ushort>(360-aimSize+y,640-aimSize+x);
+                }
+            } aimPP = aimPP / (4*aimSize*aimSize);
+
+        
+            cout << "\rcenter depth[area|point]: " << aimPP << "|" << depth.at<ushort>(360,640) << flush;
+        }
+
+        cv::imshow("color", display);
+        cv::imshow("normals", quantized_images[1]);
 
 
-
-
-//         char key = (char)cv::waitKey(10);
-//         if (key == 'q')
-//             break;
-
-//         switch (key)
-//         {
-// 			case 'h':
-// 				help();
-// 				break;
-// 			case 'm':
-// 				// toggle printing match result
-// 				show_match_result = !show_match_result;
-// 				printf("Show match result %s\n", show_match_result ? "ON" : "OFF");
-// 				break;
-// 			case 't':
-// 				// toggle printing timings
-// 				show_timings = !show_timings;
-// 				printf("Show timings %s\n", show_timings ? "ON" : "OFF");
-// 				break;
-// 			case '[':
-// 				// decrement threshold
-// 				matching_threshold = std::max(matching_threshold - 1, -100);
-// 				printf("New threshold: %d\n", matching_threshold);
-// 				break;
-// 			case ']':
-// 				// increment threshold
-// 				matching_threshold = std::min(matching_threshold + 1, +100);
-// 				printf("New threshold: %d\n", matching_threshold);
-// 				break;
-// 			case 'c':
-// 				//capture switch
-// 				cout<<"Capture switch ON"<<endl;
-// 				capt = true;
-// 				break;
-// 			case 'r':
-// 				//record switch
-// 				if(recording) cout<<endl<<"Recording switch OFF"<<endl;
-// 				else cout<<"Recording switch ON"<<endl;
-// 				recording = !recording;
-// 				if(!recording) endXML=true;
-// 				break;
-// 			default:
-// 				;
-//         } // switch
+        cv::imwrite("./capture/color/color" + to_string(recordID) +".png", display);
+        cv::imwrite("./capture/normal/normal" + to_string(recordID) +".png", quantized_images[1]);
 
 
 
-//     } // Main loop
+
+        char key = (char)cv::waitKey(10);
+        if (key == 'q')
+            break;
+
+        switch (key)
+        {
+			case 'h':
+				help();
+				break;
+			case 'm':
+				// toggle printing match result
+				show_match_result = !show_match_result;
+				printf("Show match result %s\n", show_match_result ? "ON" : "OFF");
+				break;
+			case 't':
+				// toggle printing timings
+				show_timings = !show_timings;
+				printf("Show timings %s\n", show_timings ? "ON" : "OFF");
+				break;
+			case '[':
+				// decrement threshold
+				matching_threshold = std::max(matching_threshold - 1, -100);
+				printf("New threshold: %d\n", matching_threshold);
+				break;
+			case ']':
+				// increment threshold
+				matching_threshold = std::min(matching_threshold + 1, +100);
+				printf("New threshold: %d\n", matching_threshold);
+				break;
+			case 'c':
+				// capture switch
+				cout<<"Capture switch ON"<<endl;
+				capt = true;
+				break;
+			case 'r':
+				// record switch
+				if(recording) cout<<endl<<"Recording switch OFF"<<endl;
+				else cout<<"Recording switch ON"<<endl;
+				recording = !recording;
+				if(!recording) endXML=true;
+				break;
+            case 'l':
+                // Aiming isocenter
+                if(show_aiming) cout << endl << "Aiming switch OFF" << endl;
+                else cout << "Aiming swithch ON" << endl;
+                show_aiming = ! show_aiming;
+                break;
+			default:
+				;
+        } // switch
+
+
+
+    } // Main loop
 
 
     return 0;
@@ -750,8 +776,6 @@ void drawResponse(const std::vector<cv::linemod::Template>& templates,
                                           CV_RGB(255, 255, 0),
                                           CV_RGB(255, 140, 0),
                                           CV_RGB(255, 0, 0) };
-
-    res << endl;
     for (int m = 0; m < num_modalities; ++m)
     {
         // NOTE: Original demo recalculated max response for each feature in the TxT
@@ -764,11 +788,11 @@ void drawResponse(const std::vector<cv::linemod::Template>& templates,
             cv::linemod::Feature f = templates[m].features[i];
             cv::Point pt(f.x + offset.x, f.y + offset.y);
             cv::circle(dst, pt, T / 2, color);
-            res << xy_table[depth.cols*pt.y + pt.x].first  * depth.at<ushort>(pt.y,pt.x) << " "
-                << xy_table[depth.cols*pt.y + pt.x].second * depth.at<ushort>(pt.y,pt.x) << " "
-                << depth.at<ushort>(pt.y,pt.x) << "    " << pt.x << " " << pt.y
-				 	 	 	 	 	 	 	   << "    " << offset.x << " " << offset.y << endl;
+            // res << xy_table[depth.cols*pt.y + pt.x].first  * depth.at<ushort>(pt.y,pt.x) << " "
+            //     << xy_table[depth.cols*pt.y + pt.x].second * depth.at<ushort>(pt.y,pt.x) << " "
+            //     << depth.at<ushort>(pt.y,pt.x) << "    " << pt.x << " " << pt.y
+			// 	 	 	 	 	 	 	 	   << "    " << offset.x << " " << offset.y << endl;
         }
-        res << "---------" << endl;
+        // res << "---------" << endl;
     }
 }
